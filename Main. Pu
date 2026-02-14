@@ -2,12 +2,36 @@
 # -*- coding: utf-8 -*-
 
 """
-بوت بلوم - ملف واحد فقط للتشغيل
+بوت بلوم - ملف واحد شامل
 ================================
+هذا الملف يحتوي على كل شيء: الكود + المكتبات
 """
 
-import os
+# ================ تثبيت المكتبات تلقائياً ================
+import subprocess
 import sys
+import os
+
+# قائمة المكتبات المطلوبة
+REQUIRED_PACKAGES = ['telethon', 'requests', 'colorama', 'cryptg', 'pyaes', 'rsa']
+
+# دالة لتثبيت المكتبات
+def install_packages():
+    for package in REQUIRED_PACKAGES:
+        try:
+            __import__(package)
+            print(f"✅ {package} مثبت مسبقاً")
+        except ImportError:
+            print(f"📦 جاري تثبيت {package}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+            print(f"✅ تم تثبيت {package}")
+
+# تثبيت المكتبات قبل البدء
+print("🔧 جاري التحقق من المكتبات المطلوبة...")
+install_packages()
+print("✅ جميع المكتبات جاهزة\n")
+
+# ================ استيراد المكتبات ================
 import asyncio
 import random
 import requests
@@ -16,6 +40,9 @@ import time
 from datetime import datetime
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError, FloodWaitError
+import colorama
+from colorama import Fore, Style
+colorama.init(autoreset=True)
 
 # ================ معلوماتك الشخصية ================
 BOT_TOKEN = "8546862642:AAGtrE_iJXglP4tyfYKRvLxK0jXKZm37YO0"
@@ -100,13 +127,14 @@ class ControlBot:
         self.ref_code = None
         
     async def start(self):
-        print("✅ جاري تشغيل البوت...")
+        print(f"{Fore.CYAN}✅ جاري تشغيل البوت...{Style.RESET_ALL}")
         await self.manager.load_saved()
-        print(f"✅ تم تحميل {len(self.manager.accounts)} حساب")
+        print(f"{Fore.GREEN}✅ تم تحميل {len(self.manager.accounts)} حساب{Style.RESET_ALL}")
         
         self.bot = TelegramClient('bot_session', API_ID, API_HASH)
         await self.bot.start(bot_token=BOT_TOKEN)
-        print("✅ بوت التحكم شغال الآن!")
+        print(f"{Fore.GREEN}✅ بوت التحكم شغال الآن!{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}📱 افتح تلغرام وابحث عن بوتك{Style.RESET_ALL}")
         
         @self.bot.on(events.NewMessage)
         async def handler(event):
@@ -182,7 +210,6 @@ class ControlBot:
                     await event.reply(f"❌ خطأ: {str(e)}")
             
             elif text.startswith('+'):
-                # إضافة حساب جديد
                 phone = text
                 await event.reply(f"📱 جاري إضافة {phone}...")
                 try:
@@ -199,7 +226,6 @@ class ControlBot:
                     await event.reply(f"❌ خطأ: {str(e)}")
             
             elif len(text) > 3 and not text.startswith('/'):
-                # احتمال رمز تحقق
                 found = False
                 for phone, client in list(self.manager.pending.items()):
                     try:
@@ -225,7 +251,6 @@ class ControlBot:
                         break
                 
                 if not found:
-                    # التحقق من كلمة المرور الثنائية
                     for key, client in list(self.manager.pending.items()):
                         if key.endswith('_2fa'):
                             try:
@@ -245,7 +270,6 @@ class ControlBot:
                                 break
                 
                 if not found:
-                    # هذا يعتبر كود إحالة
                     self.ref_code = text
                     await event.reply(f"🔗 تم حفظ كود الإحالة: `{self.ref_code}`\nالآن يمكنك استخدام /ref رقم_الحساب لتفعيله")
             
@@ -262,6 +286,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n👋 تم إيقاف البوت")
+        print(f"\n{Fore.YELLOW}👋 تم إيقاف البوت{Style.RESET_ALL}")
     except Exception as e:
-        print(f"\n❌ خطأ: {e}")
+        print(f"\n{Fore.RED}❌ خطأ: {e}{Style.RESET_ALL}")
