@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+بوت بلوم - ملف واحد فقط للتشغيل
+================================
+تم التعديل: إضافة كود الإحالة عبر المحادثة
+"""
+
+import os
+import sys
+import asyncio
+import random
+import requests
+import json
+import time
+from datetime import datetime
+from telethon import TelegramClient, events
+from telethon.errors import SessionPasswordNeededError, FloodWaitError
+
+# ================ معلوماتك الشخصية ================
+BOT_TOKEN = "8546862642:AAGtrE_iJXglP4tyfYKRvLxK0jXKZm37YO0"  # ✅ توكنك
+API_ID = 38700083  # ✅ لا تغيره
+API_HASH = "bbe7d9a92a90bb5fccadea082ac0c386"  # ✅ لا تغيره
+YOUR_USER_ID = 7096534637  # ✅ لا تغيره
+
+# ================ متغيرات كود الإحالة ================
+# هذا المتغير راح يتغير لما ترسل كود الإحالة
+REF_CODE = None  # سيتم تحديثه عبر المحادثة
+
+# ================ باقي الإعدادات ================
+BLUM_BOT = "BlumCryptoBot"
+CHECK_INTERVAL = 8 * 60 * 60
+TASK_DELAY_MIN = 10
+TASK_DELAY_MAX = 30
+USE_PROXY = True
+
+PROXY_SOURCES = [
+    "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt"
+]
+
+def fetch_free_proxies():
+    proxies = []
+    for url in PROXY_SOURCES:
+        try:
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                proxies.extend([p.strip() for p in r.text.split('\n') if p.strip() and ':' in p])
+        except:
+            pass
+    return list(set(proxies))[:30]
+
+def parse_proxy(p):
+    try:
+        if '://' in p: p = p.split('://')[-1]
+        parts = p.split(':')
+        if len(parts) == 2:
+            return {'proxy_type': 'socks5', 'addr': parts[0], 'port': int(parts[1])}
+    except:
+        return None
+
+class AccountManager:
+    def __init__(self):
+        self.accounts = {}
+        self.proxies = fetch_free_proxies() if USE_PROXY else []
+        self.pending = {}
+        
+    def get_proxy(self):
+        return parse_proxy(random.choice(self.proxies)) if self.proxies else None
+    
+    async def load_saved(self):
+        session_files = [f for f in os.listdir('.') if f.endswith('.session')]
+        for f in session_files:
+            try:
+                phone = f.replace('.session', '')
+                if phone and phone[0].isdigit():
+                    phone = '+' + phone
+                client = TelegramClient(f, API_ID, API_HASH, proxy=self.get_proxy())
+                await client.connect()
+                if await client.is_user_authorized():
+                    self.accounts[phone] = {'client': client, 'phone': phone}
+            except:
+                pass
+
+class ControlBot:
+    def __init__(self):
+        self.manager = AccountManager()
+        self.bot = None
+        self.ref_code = None  # هنا يتم تخزين كود الإحالة
+        
+    async def start(self):
+        print("✅ جاري تشغيل البوت...")
+        await self.manager.load_saved()
+        self.bot = TelegramClient('bot', API_ID, API_HASH)
+        await self.bot.start(bot_token=BOT_TOKEN)
+        print("✅ بوت التحكم شغال الآن!")
+        
+        @self.bot.on(events.NewMessage)
+        async def handler(event):
+            if event.sender_id != YOUR_USER_ID:
+                await event.reply("⛔ هذا البوت خاص")
+                return
+            
+            text = event.text.strip()
+            
+            if text == '/start':
+                await event.reply(
+                    "🤖 **بوت بلوم**\n\n"
+                    "📱 **لإضافة حساب:** أرسل الرقم (مثال: +9647xxxxxxxx)\n"
+                    "🔗 **لإضافة كود الإحالة:** أرسل الكود فقط (مثال: AbCdEfGh)\n"
+                    "📋 **عرض الحسابات:** /accounts\n"
+                    "🌾 **بدء التعدين:** /farm\n"
+                    "🔄 **تفعيل إحالة لحساب:** /ref رقم_الحساب\n"
+                    "👀 **عرض كود الإحالة الحالي:** /myref"
+                )
+            
+            elif text == '/accounts':
+                if not self.manager.accounts:
+                    await event.reply("❌ لا توجد حسابات")
+                    return
+                msg = "📋 **الحسابات:**\n"
+                for i, phone in enumerate(self.manager.accounts.keys(), 1):
+                    msg += f"{i}. `{phone}`\n"
+                await event.reply(msg)
+            
+            elif text == '/farm':
+                if not self.manager.accounts:
+                    await event.reply("❌ لا توجد حسابات")
+                    return
+                await event.reply("🌾 بدء التعدين...")
+                for phone, acc in self.manager.accounts.items():
+                    try:
+                        await acc['client'].send_message(BLUM_BOT, '/start')
+                        await asyncio.sleep(random.randint(TASK_DELAY_MIN, TASK_DELAY_MAX))
+                    except:
+                        pass
+                await event.reply("✅ انتهى التعدين")
+            
+            elif text == '/myref':
+                if self.ref_code:
+                    await event.reply(f"🔗 كود الإحالة الحالي: `{self.ref_code}`")
+                else:
+                    await event.reply("❌ لا يوجد كود إحالة حالياً. أرسل الكود لإضافته")
+            
+            elif text.startswith('/ref'):
+                parts = text.split()
+                if len(parts) != 2:
+                    await event.reply("❌ استخدم: /ref رقم_الحساب")
+                    return
+                try:
+                    idx = int(parts[1]) - 1
+                    phone = list(self.manager.accounts.keys())[idx]
+                    acc = self.manager.accounts[phone]
+                    
+                    if self.ref_code:
+                        await acc['client'].send_message(BLUM_BOT, f'/start ref_{self.ref_code}')
+                        await event.reply(f"✅ تم تفعيل الإحالة بكود `{self.ref_code}` للحساب {phone}")
+                    else:
+                        await event.reply("❌ لا يوجد كود إحالة. أرسل الكود أولاً")
+                except Exception as e:
+                    await event.reply(f"❌ خطأ: {str(e)}")
+            
+            elif text.startswith('+'):
+                # إضافة حساب جديد
+                phone = text
+                await event.reply(f"📱 جاري إضافة {phone}...")
+                try:
+                    if not os.path.exists('accounts'):
+                        os.makedirs('accounts')
+                    
+                    client = TelegramClient(f"accounts/{phone.replace('+', '')}", API_ID, API_HASH, proxy=self.manager.get_proxy())
+                    await client.connect()
+                    await client.send_code_request(phone)
+                    self.manager.pending[phone] = client
+                    await event.reply("📲 أرسل رمز التحقق الآن")
+                except Exception as e:
+                    await event.reply(f"❌ خطأ: {str(e)}")
+            
+            elif text.replace('_', '').isalnum() and len(text) > 5 and not text.startswith('/'):
+                # هذا النص يعتبر كود إحالة (حروف وأرقام فقط)
+                self.ref_code = text.strip()
+                await event.reply(f"🔗 تم حفظ كود الإحالة: `{self.ref_code}`\nالآن يمكنك استخدام /ref رقم_الحساب لتفعيله")
+            
+            else:
+                # احتمال يكون رمز تحقق
+                for phone, client in list(self.manager.pending.items()):
+                    try:
+                        await client.sign_in(phone, text)
+                        if await client.is_user_authorized():
+                            self.manager.accounts[phone] = {'client': client, 'phone': phone}
+                            del self.manager.pending[phone]
+                            msg = f"✅ تم إضافة {phone}"
+                            if self.ref_code:
+                                msg += f"\n\n🔗 يمكنك تفعيل الإحالة الآن بـ /ref {len(self.manager.accounts)}"
+                            await event.reply(msg)
+                        return
+                    except SessionPasswordNeededError:
+                        self.manager.pending[phone + '_2fa'] = client
+                        del self.manager.pending[phone]
+                        await event.reply("🔑 هذا الحساب مفعل عليه التحقق بخطوتين\nأرسل كلمة المرور")
+                        return
+                    except Exception as e:
+                        await event.reply(f"❌ خطأ في التحقق: {str(e)}")
+                        return
+                
+                # التحقق من كلمة المرور الثنائية
+                for key, client in list(self.manager.pending.items()):
+                    if key.endswith('_2fa'):
+                        try:
+                            await client.sign_in(password=text)
+                            phone = key.replace('_2fa', '')
+                            self.manager.accounts[phone] = {'client': client, 'phone': phone}
+                            del self.manager.pending[key]
+                            msg = f"✅ تم إضافة {phone}"
+                            if self.ref_code:
+                                msg += f"\n\n🔗 يمكنك تفعيل الإحالة الآن بـ /ref {len(self.manager.accounts)}"
+                            await event.reply(msg)
+                            return
+                        except Exception as e:
+                            await event.reply(f"❌ كلمة مرور غير صحيحة: {str(e)}")
+                            return
+                
+                await event.reply("❌ أمر غير معروف")
+        
+        await self.bot.run_until_disconnected()
+
+async def main():
+    bot = ControlBot()
+    await bot.start()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n👋 تم إيقاف البوت")
+    except Exception as e:
+        print(f"\n❌ خطأ: {e}")
